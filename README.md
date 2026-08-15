@@ -47,7 +47,9 @@ Steps:
 
 ## Using it as an MCP server (agent-friendly interface)
 
-`src/mcpServer.mjs` exposes this whole integration as MCP tools, so any MCP-compatible agent (Claude Code, Claude Desktop, etc.) can call eBay APIs directly without knowing anything about OAuth mechanics. Tools are organized by workflow in `src/tools/`:
+`src/mcpServer.mjs` exposes this whole integration as MCP tools, so any MCP-compatible agent (Claude Code, Claude Desktop, etc.) can call eBay APIs directly without knowing anything about OAuth mechanics. Tools are organized by workflow in `src/tools/`.
+
+**If you're an agent working in this repo, read `.claude/skills/ebay-oauth-api/SKILL.md`** — it's the operational playbook for driving these tools correctly (what order to call them in, what to do when login is needed, what to do when selling fails because business policies aren't set up, etc). This section of the README is the reference table; the skill is the how-to.
 
 **Auth** (`src/tools/auth.mjs`)
 | Tool | Purpose |

@@ -1,0 +1,17 @@
+{
+  "name": "ebay-oauth-api",
+  "version": "1.0.0",
+  "description": "eBay OAuth 2.0 integration (client credentials + 3-legged authorization code + refresh token handling)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

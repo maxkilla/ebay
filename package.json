@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "mcp": "node src/mcpServer.mjs"
+    "mcp": "node src/mcpServer.mjs",
+    "mcp:http": "node src/mcpHttpServer.mjs"
   },
   "license": "UNLICENSED",
   "private": true,

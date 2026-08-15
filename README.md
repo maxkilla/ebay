@@ -112,6 +112,49 @@ Two things to know:
 - The MCP server and the HTTP server (`npm start`) share state through the same token file (`TOKEN_STORE_PATH`) — run both from the same repo checkout. The HTTP server must be **running** at the moment a human completes the consent screen, because eBay's redirect lands on its `/auth/ebay/callback` route. The MCP server only needs to be running to make tool calls (including generating the login URL).
 - `ebay_api_request` with `useUserToken:true` requires `ebay_login_url` to have been completed first — it'll throw a clear "no refresh token on file" error otherwise, which an agent can surface and act on (e.g. by calling `ebay_login_url` and asking a human to approve).
 
+### Running it remotely — accessing it from anywhere
+
+The stdio server above only works for a client running on the same machine (it's spawned as a local subprocess). To call these tools from other devices — your laptop, a phone client, a second server — deploy `src/mcpHttpServer.mjs` instead. Same 19 tools, same underlying code, reachable over HTTP with a required bearer token.
+
+```bash
+# Generate a strong random token — do this once per deployment, don't reuse the same one everywhere
+openssl rand -hex 32
+```
+
+Set in `.env` on the server:
+
+```
+MCP_AUTH_TOKEN=<the token you generated>
+MCP_HTTP_PORT=3100
+MCP_HTTP_HOST=0.0.0.0
+MCP_ALLOWED_HOSTS=mcp.yourdomain.com   # your real domain once you have one; blank is fine while testing
+```
+
+```bash
+npm run mcp:http
+```
+
+The server **refuses to start** without `MCP_AUTH_TOKEN` set to at least 20 characters — there's no unauthenticated fallback, because anyone who reaches this endpoint can list/sell/ship on your eBay account through it. Every request to `POST /mcp` must carry `Authorization: Bearer <token>`; `GET /health` is the only open route, and it exposes nothing beyond a liveness check.
+
+**Put this behind HTTPS before exposing it beyond localhost.** The bearer token travels as a plain header — over plain HTTP it's readable by anyone on the network path. Terminate TLS in front of it with a reverse proxy (Caddy or nginx with Let's Encrypt are the easiest) or your host's built-in HTTPS (Fly.io, Render, a platform load balancer, etc. all do this for you). Don't run `mcp:http` directly on the public internet over plain `http://`.
+
+Client-side config points at the URL instead of a local command:
+
+```json
+{
+  "mcpServers": {
+    "ebay-oauth": {
+      "url": "https://mcp.yourdomain.com/mcp",
+      "headers": { "Authorization": "Bearer <the same token>" }
+    }
+  }
+}
+```
+
+The exact config shape depends on your MCP client — some (like Claude Code's `.mcp.json`) support a `url` + `headers` remote server entry directly; others need a local stdio-to-HTTP bridge. Check your client's docs for "remote MCP server" or "HTTP MCP server" support.
+
+It's stateless (`sessionIdGenerator: undefined`) — each call is independent, nothing about a session is kept server-side between requests — so it scales horizontally and there's no session affinity to worry about behind a load balancer.
+
 ## Token storage
 
 Tokens are cached in a local JSON file (`TOKEN_STORE_PATH`, default `.data/tokens.json`), gitignored, mode `0600`. This is intentionally simple for dev/testing. For production with multiple instances, swap `src/tokenStore.js` for a shared store (Redis, a DB table) — it's a 4-function interface (`get`/`set`), trivial to replace.
@@ -122,6 +165,7 @@ Tokens are cached in a local JSON file (`TOKEN_STORE_PATH`, default `.data/token
 - The Cert ID (client secret) is only ever sent as an HTTP Basic-auth header directly to `https://api[.sandbox].ebay.com/identity/v1/oauth2/token` — never logged, never sent anywhere else.
 - If credentials are ever pasted in plaintext somewhere they shouldn't be (chat, a ticket, a shared doc), rotate the Cert ID in the Developer Portal — old one keeps working until you do.
 - The `/auth/ebay/login` → `/auth/ebay/callback` flow uses a `state` param persisted to the token file (15-minute TTL) to prevent CSRF and to let the MCP server and HTTP server agree on legitimacy across processes. Swap for a shared store (Redis, DB) if you run multiple server instances behind a load balancer.
+- `mcpHttpServer.mjs` compares the bearer token with `crypto.timingSafeEqual` and refuses to start without one — treat that token like a password to your eBay account (it can drive every tool, including publishing listings and shipping orders). Rotate it by changing `MCP_AUTH_TOKEN` and restarting; there's no revocation list since there's only ever one valid token at a time.
 
 ## Testing without a public HTTPS endpoint
 

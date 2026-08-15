@@ -47,15 +47,44 @@ Steps:
 
 ## Using it as an MCP server (agent-friendly interface)
 
-`src/mcpServer.mjs` exposes this whole integration as MCP tools, so any MCP-compatible agent (Claude Code, Claude Desktop, etc.) can call eBay APIs directly without knowing anything about OAuth mechanics:
+`src/mcpServer.mjs` exposes this whole integration as MCP tools, so any MCP-compatible agent (Claude Code, Claude Desktop, etc.) can call eBay APIs directly without knowing anything about OAuth mechanics. Tools are organized by workflow in `src/tools/`:
 
+**Auth** (`src/tools/auth.mjs`)
 | Tool | Purpose |
 |---|---|
 | `ebay_auth_status` | Check whether a seller has completed login, and which environment is active. Call this first. |
 | `ebay_login_url` | Get a consent URL. The agent hands this to a human — eBay requires interactive login, an agent can't complete it alone. |
 | `ebay_refresh_user_token` | Force a token refresh (rarely needed — happens automatically). |
-| `ebay_search_items` | Convenience wrapper over Browse API search — no login required. |
-| `ebay_api_request` | Generic authenticated call to **any** eBay REST path (Sell Inventory, Fulfillment, Account, Taxonomy, etc). Auth is handled internally based on `useUserToken`. |
+
+**Price checking** (`src/tools/pricing.mjs`) — no login required, uses the application token
+| Tool | Purpose |
+|---|---|
+| `ebay_price_check` | The fast path: search a query and get back min/max/avg/median asking price plus sample listings. Use this for "what's X worth on eBay". |
+| `ebay_search_items` | Raw Browse API search when you need more than price stats. |
+| `ebay_get_item` | Full detail (specifics, seller, images) for one item by ID. |
+
+**Selling** (`src/tools/selling.mjs`) — requires `ebay_login_url` completed first. Mirrors eBay's real listing pipeline: policies/location exist once → inventory item (the product) → offer (price + policies, draft) → publish (goes live).
+| Tool | Purpose |
+|---|---|
+| `ebay_get_business_policies` | Fetch fulfillment/payment/return policy IDs — required inputs for `ebay_create_offer`. |
+| `ebay_get_inventory_locations` | Fetch merchant location keys — also required for `ebay_create_offer`. |
+| `ebay_upsert_inventory_item` | Create/update a SKU's product data (title, images, condition, quantity). |
+| `ebay_get_inventory_item` / `ebay_list_inventory_items` | Inspect existing SKUs. |
+| `ebay_create_offer` | Create a draft listing (price + category + policies) tied to a SKU. Not live yet. |
+| `ebay_list_offers` | Check offer status / find an offerId. |
+| `ebay_publish_offer` | Go live — returns a listingId. |
+| `ebay_end_listing` | Withdraw a published offer. |
+
+**Orders** (`src/tools/orders.mjs`) — requires login, for handling sales after they happen
+| Tool | Purpose |
+|---|---|
+| `ebay_get_orders` / `ebay_get_order` | List/inspect orders. |
+| `ebay_ship_order` | Mark a line item shipped with a tracking number, fulfilling the order. |
+
+**Escape hatch** (`src/tools/generic.mjs`)
+| Tool | Purpose |
+|---|---|
+| `ebay_api_request` | Authenticated call to any eBay REST path not covered above (Taxonomy, Marketing, etc). |
 
 Run it:
 

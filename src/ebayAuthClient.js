@@ -1,12 +1,17 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const config = require('./config');
 const tokenStore = require('./tokenStore');
 
 const APP_TOKEN_KEY = 'application_token';
 const USER_TOKEN_KEY = 'user_token';
+const PENDING_STATES_KEY = 'pending_states';
 
 // Refresh this many seconds before actual expiry so a request never races an expiring token.
 const EXPIRY_SAFETY_MARGIN_SECONDS = 60;
+
+// How long a generated CSRF `state` stays valid, waiting for the callback.
+const STATE_TTL_MS = 15 * 60 * 1000;
 
 function basicAuthHeader() {
   const credentials = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64');
@@ -79,6 +84,42 @@ function getAuthorizeUrl(state) {
   });
   if (state) params.set('state', state);
   return `${config.authorizeEndpoint}?${params.toString()}`;
+}
+
+/**
+ * CSRF state is persisted to disk (not just in-memory) so that whichever
+ * process starts the flow — the HTTP server or the MCP server — and
+ * whichever process eBay calls back into can agree it's legitimate, even
+ * if they're separate Node processes sharing the same token store file.
+ */
+function generateState() {
+  const state = crypto.randomBytes(16).toString('hex');
+  const pending = tokenStore.get(PENDING_STATES_KEY) || {};
+  const now = Date.now();
+  for (const [key, issuedAt] of Object.entries(pending)) {
+    if (now - issuedAt > STATE_TTL_MS) delete pending[key];
+  }
+  pending[state] = now;
+  tokenStore.set(PENDING_STATES_KEY, pending);
+  return state;
+}
+
+function consumeState(state) {
+  const pending = tokenStore.get(PENDING_STATES_KEY) || {};
+  const issuedAt = pending[state];
+  if (!issuedAt) return false;
+  delete pending[state];
+  tokenStore.set(PENDING_STATES_KEY, pending);
+  return Date.now() - issuedAt <= STATE_TTL_MS;
+}
+
+/**
+ * Convenience for callers (like the MCP server) that just want "give me a
+ * URL to hand a human" without managing state themselves.
+ */
+function beginUserAuthorization() {
+  const state = generateState();
+  return { url: getAuthorizeUrl(state), state };
 }
 
 /**
@@ -161,6 +202,9 @@ function getUserTokenStatus() {
 module.exports = {
   getApplicationToken,
   getAuthorizeUrl,
+  generateState,
+  consumeState,
+  beginUserAuthorization,
   exchangeCodeForToken,
   refreshUserToken,
   getUserAccessToken,

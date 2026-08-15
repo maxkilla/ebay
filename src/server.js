@@ -1,7 +1,6 @@
 const express = require('express');
-const axios = require('axios');
 const config = require('./config');
-const ebayAuth = require('./ebayAuthClient');
+const { ebayRequest } = require('./apiClient');
 const authRoutes = require('./routes/auth');
 
 const app = express();
@@ -17,18 +16,10 @@ app.get('/health', (req, res) => {
 app.get('/api/demo/search', async (req, res) => {
   const q = req.query.q || 'baseball card';
   try {
-    const token = await ebayAuth.getApplicationToken();
-    const result = await axios.get(`${config.apiBaseUrl}/buy/browse/v1/item_summary/search`, {
-      params: { q, limit: 5 },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-      },
-    });
-    res.json(result.data);
+    const result = await ebayRequest({ path: '/buy/browse/v1/item_summary/search', query: { q, limit: 5 } });
+    res.status(result.status).json(result.data);
   } catch (err) {
-    const detail = err.response ? err.response.data : err.message;
-    res.status(500).json({ error: 'ebay_api_error', detail });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -37,14 +28,10 @@ app.get('/api/demo/search', async (req, res) => {
 // completed first.
 app.get('/api/demo/privileges', async (req, res) => {
   try {
-    const token = await ebayAuth.getUserAccessToken();
-    const result = await axios.get(`${config.apiBaseUrl}/sell/account/v1/privilege`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    res.json(result.data);
+    const result = await ebayRequest({ path: '/sell/account/v1/privilege', useUserToken: true });
+    res.status(result.status).json(result.data);
   } catch (err) {
-    const detail = err.response ? err.response.data : err.message;
-    res.status(err.response ? err.response.status : 500).json({ error: 'ebay_api_error', detail });
+    res.status(500).json({ error: err.message });
   }
 });
 

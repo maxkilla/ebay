@@ -14,11 +14,12 @@ npm install
 cp .env.example .env   # fill in EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_ENV
 ```
 
-Two processes run side by side, and both need to be up for the full selling workflow:
+Pick one way to run it — don't run more than one unless you specifically need both:
 
-- `npm start` — the HTTP server. Must be **running** at the moment a human completes eBay's login/consent screen, because eBay's OAuth redirect lands on its `/auth/ebay/callback` route. Not needed for price-checking (that only uses the app token).
-- `npm run mcp` — the MCP server (stdio transport). This is what a local agent (e.g. Claude Desktop on the same machine) calls tools on. It shares state with the HTTP server through the same token file (`.data/tokens.json` by default), so both must be launched from the same checkout.
-- `npm run mcp:http` — the same tools, reachable over HTTP with a required bearer token (`MCP_AUTH_TOKEN` in `.env`), for calling this from a different machine than the one it runs on. See the README's "Running it remotely" section before deploying this — it refuses to start without a real token, and needs HTTPS in front of it in production.
+- **Local, for a client on the same machine** (e.g. Claude Desktop): run `npm start` (HTTP callback server) and `npm run mcp` (stdio MCP server) side by side. Both must be running for login to complete, since eBay's redirect lands on `npm start`'s `/auth/ebay/callback` route while the MCP tools live in the other process. They share state through the same token file (`.data/tokens.json` by default), so launch both from the same checkout.
+- **Remote, reachable from anywhere**: run `npm run mcp:http` alone. It's self-contained — the same 19 tools plus the login/callback routes, all in one process, gated by a required `MCP_AUTH_TOKEN` bearer token on `/mcp` (open on `/auth/ebay/*` and `/health`, since eBay's redirect can't carry a bearer header). See the README's "Running it remotely" section — it refuses to start without a real token, and needs HTTPS in front of it in production. `npm start` is not needed alongside this.
+
+Price-checking alone needs neither the callback server nor login — it only uses the app (client-credentials) token, so either running mode is fine, or you can call it before login is ever set up.
 
 If selling or order tools will be used, one extra one-time step: register a **RuName** in the eBay Developer Portal (Application Keys → User Tokens → "Get a Token from eBay via Your Application") and set `EBAY_RU_NAME` in `.env`. eBay's `redirect_uri` for the login flow is this RuName string, not a literal URL — see the README's "RuName gotcha" section if login fails with a redirect-related error. Price-checking alone never needs this.
 
@@ -26,7 +27,7 @@ If selling or order tools will be used, one extra one-time step: register a **Ru
 
 Call it before doing anything else in a session. It reports the environment (sandbox/production) and whether a seller has completed login. Price-checking tools work regardless of its answer; every selling and order tool requires `authorized: true`.
 
-If not authorized and the task needs selling/orders: call `ebay_login_url`, then **hand the returned URL to a human** — eBay requires interactive login and consent, there is no way for an agent to complete this step itself. After they confirm they've approved it, call `ebay_auth_status` again to verify before continuing.
+If not authorized and the task needs selling/orders: call `ebay_login_url`, then **hand the returned URL to a human** — eBay requires interactive login and consent, there is no way for an agent to complete this step itself. (On a `mcp:http` deployment, the human can skip the tool call entirely and just open `https://<your-domain>/auth/ebay/login` directly in a browser.) After they confirm they've approved it, call `ebay_auth_status` again to verify before continuing.
 
 ## Workflow 1: Price checking
 

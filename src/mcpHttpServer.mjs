@@ -18,6 +18,7 @@ import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js
 import ebayAuthModule from './ebayAuthClient.js';
 import apiClientModule from './apiClient.js';
 import configModule from './config.js';
+import authRoutesModule from './routes/auth.js';
 
 import { registerAuthTools } from './tools/auth.mjs';
 import { registerPricingTools } from './tools/pricing.mjs';
@@ -73,6 +74,14 @@ const app = createMcpExpressApp({
   ...(ALLOWED_HOSTS.length ? { allowedHosts: ALLOWED_HOSTS } : {}),
 });
 
+// Same OAuth login/callback routes as src/server.js, mounted here too so a
+// single deployment of this file is enough — eBay's redirect and the /mcp
+// endpoint end up on the same domain, no second process to run or wire up.
+// Unauthenticated by design: eBay's redirect can't carry a bearer token, and
+// /login is meant to be opened directly in a browser by whoever owns this
+// server. The MCP endpoint below is the one that's actually gated.
+app.use('/auth/ebay', authRoutesModule);
+
 // Stateless: each request gets a fresh McpServer + transport, no session
 // state kept between calls. Simpler to run behind a load balancer and
 // matches how most remote MCP clients (including Claude) call tools —
@@ -109,6 +118,8 @@ app.get('/health', (req, res) => res.json({ ok: true, env: config.env }));
 app.listen(PORT, HOST, () => {
   console.log(`eBay MCP HTTP server listening on ${HOST}:${PORT} [env=${config.env}]`);
   console.log(`  MCP endpoint: POST http://${HOST}:${PORT}/mcp  (Authorization: Bearer <token>)`);
+  console.log(`  eBay login:   GET  http://${HOST}:${PORT}/auth/ebay/login   (open in a browser)`);
+  console.log(`  Login status: GET  http://${HOST}:${PORT}/auth/ebay/status`);
   console.log(`  Health check: GET  http://${HOST}:${PORT}/health`);
   console.log('  Put this behind HTTPS before exposing it beyond localhost.');
 });

@@ -114,7 +114,7 @@ Two things to know:
 
 ### Running it remotely — accessing it from anywhere
 
-The stdio server above only works for a client running on the same machine (it's spawned as a local subprocess). To call these tools from other devices — your laptop, a phone client, a second server — deploy `src/mcpHttpServer.mjs` instead. Same 19 tools, same underlying code, reachable over HTTP with a required bearer token.
+The stdio server above only works for a client running on the same machine (it's spawned as a local subprocess). To call these tools from other devices — your laptop, a phone client, a second server — deploy `src/mcpHttpServer.mjs` instead. **This one file is a complete, self-contained deployment**: it serves the 19 MCP tools *and* the eBay login/callback routes together, so it's the only process you need to run remotely — `server.js`/`npm start` is only for local dev without an MCP client, you don't need it alongside this.
 
 ```bash
 # Generate a strong random token — do this once per deployment, don't reuse the same one everywhere
@@ -128,15 +128,18 @@ MCP_AUTH_TOKEN=<the token you generated>
 MCP_HTTP_PORT=3100
 MCP_HTTP_HOST=0.0.0.0
 MCP_ALLOWED_HOSTS=mcp.yourdomain.com   # your real domain once you have one; blank is fine while testing
+EBAY_RU_NAME=<from the Developer Portal — see the RuName section above>
 ```
 
 ```bash
 npm run mcp:http
 ```
 
-The server **refuses to start** without `MCP_AUTH_TOKEN` set to at least 20 characters — there's no unauthenticated fallback, because anyone who reaches this endpoint can list/sell/ship on your eBay account through it. Every request to `POST /mcp` must carry `Authorization: Bearer <token>`; `GET /health` is the only open route, and it exposes nothing beyond a liveness check.
+The server **refuses to start** without `MCP_AUTH_TOKEN` set to at least 20 characters — there's no unauthenticated fallback, because anyone who reaches this endpoint can list/sell/ship on your eBay account through it. Every request to `POST /mcp` must carry `Authorization: Bearer <token>`. `GET /health`, `GET /auth/ebay/login`, `GET /auth/ebay/callback`, and `GET /auth/ebay/status` are intentionally open — eBay's redirect can't carry a bearer token, and these don't expose anything beyond "is this account logged in".
 
-**Put this behind HTTPS before exposing it beyond localhost.** The bearer token travels as a plain header — over plain HTTP it's readable by anyone on the network path. Terminate TLS in front of it with a reverse proxy (Caddy or nginx with Let's Encrypt are the easiest) or your host's built-in HTTPS (Fly.io, Render, a platform load balancer, etc. all do this for you). Don't run `mcp:http` directly on the public internet over plain `http://`.
+**Put this behind HTTPS before exposing it beyond localhost.** The bearer token travels as a plain header — over plain HTTP it's readable by anyone on the network path. eBay's RuName also requires an HTTPS Auth Accepted URL in production. Terminate TLS in front of it with a reverse proxy (Caddy or nginx with Let's Encrypt are the easiest) or your host's built-in HTTPS (Fly.io, Render, a platform load balancer, etc. all do this for you). Don't run `mcp:http` directly on the public internet over plain `http://`.
+
+**Completing the login, once this is deployed:** register your RuName's Auth Accepted URL as `https://mcp.yourdomain.com/auth/ebay/callback`, then just open `https://mcp.yourdomain.com/auth/ebay/login` **directly in a browser** — no curl, no MCP tool call, no token needed for this part. Log in as the eBay seller, approve, and you'll land back on the callback route automatically. Check `https://mcp.yourdomain.com/auth/ebay/status` (also just a browser visit) to confirm `"authorized":true`.
 
 Client-side config points at the URL instead of a local command:
 
